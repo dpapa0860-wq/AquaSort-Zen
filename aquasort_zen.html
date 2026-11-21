@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AquaSort Zen — Mindful Color Water Sort Puzzle</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Fraunces', 'Georgia', 'serif'],
+            sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- React 18 & ReactDOM & Babel CDN for zero-build single HTML execution -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      user-select: none;
+      overscroll-behavior: none;
+      margin: 0;
+      padding: 0;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes sparkleBurst {
+      0% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+      35% { opacity: 1; transform: scale(1.15) rotate(12deg); }
+      100% { opacity: 0; transform: scale(1.45) rotate(28deg) translateY(-10px); }
+    }
+    @keyframes pourStreamFlow {
+      0% { stroke-dashoffset: 36; opacity: 0.95; }
+      100% { stroke-dashoffset: 0; opacity: 1; }
+    }
+    @keyframes hintPulse {
+      0%, 100% { transform: translateY(0px) scale(1); }
+      50% { transform: translateY(-4px) scale(1.03); }
+    }
+    .animate-float-slow { animation: floatSlow 4.2s ease-in-out infinite; }
+    .animate-sparkle-burst { animation: sparkleBurst 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .animate-pour-stream { stroke-dasharray: 12 6; animation: pourStreamFlow 0.28s linear infinite; }
+    .animate-hint-pulse { animation: hintPulse 1s ease-in-out infinite; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex items-center justify-center min-h-[100dvh] overflow-hidden">
+  <div id="root" class="w-full h-[100dvh] flex items-center justify-center"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // --- ADMOB CONFIG & BRIDGE ---
+    const ADMOB_CONFIG = {
+      appId: 'ca-app-pub-3940256099942544~3347511713',
+      interstitialId: 'ca-app-pub-3940256099942544/1033173712',
+      bannerId: 'ca-app-pub-3940256099942544/6300978111',
+      rewardedId: 'ca-app-pub-3940256099942544/5224354917',
+    };
+
+    async function triggerInterstitialAd() {
+      if (window.AndroidAdMob?.showInterstitial) {
+        try {
+          const res = await window.AndroidAdMob.showInterstitial(ADMOB_CONFIG.interstitialId);
+          if (res !== false) return { handledNatively: true };
+        } catch { return { handledNatively: false }; }
+      }
+      return { handledNatively: false };
+    }
+
+    async function triggerRewardedAd() {
+      if (window.AndroidAdMob?.showRewarded) {
+        try {
+          const res = await window.AndroidAdMob.showRewarded(ADMOB_CONFIG.rewardedId);
+          return { handledNatively: true, rewarded: Boolean(res) };
+        } catch { return { handledNatively: false, rewarded: false }; }
+      }
+      return { handledNatively: false, rewarded: false };
+    }
+
+    // --- GAME CATALOG & SOUND ---
+    const LIQUID_COLORS = {
+      coral: { label: 'Coral', topHex: '#FF8A7A', midHex: '#F25C4D', bottomHex: '#C93A2B', highlightHex: '#FFD2CC' },
+      ocean: { label: 'Ocean', topHex: '#56B8FF', midHex: '#1D8FE1', bottomHex: '#0F62A8', highlightHex: '#BFE4FF' },
+      amber: { label: 'Amber', topHex: '#FFD166', midHex: '#F4A226', bottomHex: '#C4770B', highlightHex: '#FFF0C2' },
+      jade: { label: 'Jade', topHex: '#5CE0A8', midHex: '#1FB57A', bottomHex: '#108255', highlightHex: '#C4F7E1' },
+      plum: { label: 'Plum', topHex: '#C78BFF', midHex: '#9352E5', bottomHex: '#6728B8', highlightHex: '#EAD4FF' },
+      rose: { label: 'Rose', topHex: '#FF8FC8', midHex: '#E84A97', bottomHex: '#B3246A', highlightHex: '#FFD6EB' },
+      sky: { label: 'Aqua', topHex: '#7CE8FF', midHex: '#23C1E8', bottomHex: '#0E8BB0', highlightHex: '#D1F7FF' },
+      ochre: { label: 'Terracotta', topHex: '#F0A47A', midHex: '#CC6D3D', bottomHex: '#99471E', highlightHex: '#FADACC' },
+      indigo: { label: 'Indigo', topHex: '#8C9EFF', midHex: '#4F63E7', bottomHex: '#2D3EB5', highlightHex: '#D4DBFF' },
+      lime: { label: 'Matcha', topHex: '#BBE66E', midHex: '#84BD2B', bottomHex: '#5A8A12', highlightHex: '#E8F7C6' },
+      crimson: { label: 'Berry', topHex: '#E86884', midHex: '#BA2D4E', bottomHex: '#851631', highlightHex: '#FACCD6' },
+      teal: { label: 'Lagoon', topHex: '#5CD6D0', midHex: '#18A49E', bottomHex: '#0A736E', highlightHex: '#C2F4F2' },
+    };
+
+    const COLOR_ORDER = Object.keys(LIQUID_COLORS);
+
+    const TUBE_STYLES = [
+      { id: 'classic', name: 'Classic Test Tube', subtitle: 'Sleek borosilicate cylinder with flared lip', price: 0 },
+      { id: 'potion', name: 'Round Potion Flask', subtitle: 'Botanical apothecary bulb with narrow neck', price: 120 },
+      { id: 'goblet', name: 'Crystal Goblet', subtitle: 'Faceted chalice silhouette with stemmed base', price: 240 },
+    ];
+
+    const THEMES = {
+      sage: {
+        id: 'sage', name: 'Sage Zen', subtitle: 'Tranquil mist and warm stone', price: 0,
+        outerBg: '#DCE5DF', canvasAmbient: 'radial-gradient(circle at 50% 18%, #F8FBF9 0%, #E6EFE9 55%, #D8E4DC 100%)',
+        surfaceBg: 'rgba(255, 255, 255, 0.88)', surfaceBorder: 'rgba(30, 58, 47, 0.12)',
+        textPrimary: '#162C23', textMuted: '#4A665A', accentBg: '#1F6E54', accentText: '#FFFFFF',
+        glassStroke: 'rgba(22, 44, 35, 0.28)', glassHighlight: 'rgba(255, 255, 255, 0.72)', glassFill: 'rgba(255, 255, 255, 0.42)', lockGlow: '#1FB57A'
+      },
+      neon: {
+        id: 'neon', name: 'Midnight Neon', subtitle: 'Deep twilight indigo with prism accents', price: 150,
+        outerBg: '#090D18', canvasAmbient: 'radial-gradient(circle at 50% 15%, #1E294D 0%, #11182E 55%, #0A0F1F 100%)',
+        surfaceBg: 'rgba(20, 29, 54, 0.90)', surfaceBorder: 'rgba(148, 179, 255, 0.18)',
+        textPrimary: '#F1F5FF', textMuted: '#9BAEE0', accentBg: '#38BDF8', accentText: '#071526',
+        glassStroke: 'rgba(186, 214, 255, 0.36)', glassHighlight: 'rgba(255, 255, 255, 0.48)', glassFill: 'rgba(255, 255, 255, 0.08)', lockGlow: '#38BDF8'
+      },
+      sunset: {
+        id: 'sunset', name: 'Sunset Beach', subtitle: 'Golden horizon over soft coral sand', price: 200,
+        outerBg: '#F4DFCF', canvasAmbient: 'radial-gradient(circle at 50% 14%, #FFF9F2 0%, #FBE7D6 52%, #F3D2BE 100%)',
+        surfaceBg: 'rgba(255, 251, 246, 0.90)', surfaceBorder: 'rgba(120, 56, 32, 0.14)',
+        textPrimary: '#361B12', textMuted: '#7A4D3C', accentBg: '#D95D39', accentText: '#FFFFFF',
+        glassStroke: 'rgba(110, 48, 28, 0.28)', glassHighlight: 'rgba(255, 255, 255, 0.78)', glassFill: 'rgba(255, 255, 255, 0.45)', lockGlow: '#F4A226'
+      }
+    };
+    const THEME_LIST = [THEMES.sage, THEMES.neon, THEMES.sunset];
+
+    // Sound Engine
+    class SoundEngine {
+      constructor() { this.ctx = null; this.muted = false; }
+      setMuted(m) { this.muted = m; }
+      getCtx() {
+        if (this.muted) return null;
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) this.ctx = new AC();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{});
+        return this.ctx;
+      }
+      playGlassClink(pitch = 1) {
+        const ctx = this.getCtx(); if (!ctx) return;
+        const now = ctx.currentTime, freq = 1380 * pitch;
+        const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain();
+        o1.type = 'sine'; o1.frequency.setValueAtTime(freq, now);
+        o2.type = 'triangle'; o2.frequency.setValueAtTime(freq * 2.41, now);
+        g.gain.setValueAtTime(0.001, now); g.gain.linearRampToValueAtTime(0.11, now + 0.006); g.gain.exponentialRampToValueAtTime(0.0008, now + 0.14);
+        o1.connect(g); o2.connect(g); g.connect(ctx.destination);
+        o1.start(now); o2.start(now); o1.stop(now + 0.16); o2.stop(now + 0.16);
+      }
+      playWaterPour(count = 1) {
+        const ctx = this.getCtx(); if (!ctx) return;
+        const now = ctx.currentTime, dur = Math.min(0.42, 0.2 + count * 0.06);
+        const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate), data = buf.getChannelData(0);
+        let last = 0; for(let i=0; i<data.length; i++) { const w = Math.random()*2 - 1; data[i] = (last + 0.05*w)/1.05; last = data[i]; }
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const flt = ctx.createBiquadFilter(); flt.type = 'bandpass'; flt.frequency.setValueAtTime(520, now); flt.frequency.exponentialRampToValueAtTime(1180, now + dur);
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.001, now); g.gain.linearRampToValueAtTime(0.24, now + 0.04); g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        src.connect(flt); flt.connect(g); g.connect(ctx.destination); src.start(now); src.stop(now + dur);
+      }
+      playLockChime() {
+        const ctx = this.getCtx(); if (!ctx) return;
+        const now = ctx.currentTime;
+        [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+          const t = now + idx * 0.055, o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.setValueAtTime(f, t);
+          g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(0.09, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.36);
+          o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.38);
+        });
+      }
+      playWinFanfare() {
+        const ctx = this.getCtx(); if (!ctx) return;
+        const now = ctx.currentTime;
+        [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5].forEach((f, idx) => {
+          const t = now + idx * 0.075, o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.setValueAtTime(f, t);
+          g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(0.11, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.55);
+          o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.58);
+        });
+      }
+      playCoin() {
+        const ctx = this.getCtx(); if (!ctx) return;
+        const now = ctx.currentTime;
+        [987.77, 1318.51].forEach((f, idx) => {
+          const t = now + idx * 0.08, o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.setValueAtTime(f, t);
+          g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(0.1, t + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.28);
+        });
+      }
+    }
+    const soundEngine = new SoundEngine();
+
+    // --- GAME RULES & GENERATOR ---
+    const TUBE_CAPACITY = 4;
+    function cloneTubes(tubes) { return tubes.map(t => [...t]); }
+    function isTubeComplete(t) { return t.length === TUBE_CAPACITY && t.every(c => c === t[0]); }
+    function isLevelWon(tubes) { let has = false; for(const t of tubes) { if (t.length===0) continue; has = true; if (!isTubeComplete(t)) return false; } return has; }
+    function getTopRun(t) {
+      if (t.length === 0) return null;
+      const c = t[t.length - 1]; let count = 1;
+      for(let i=t.length-2; i>=0; i--) { if (t[i] === c) count++; else break; }
+      return { color: c, count };
+    }
+    function canPour(from, to) {
+      if (from.length === 0 || isTubeComplete(from)) return false;
+      if (to.length >= TUBE_CAPACITY) return false;
+      if (to.length === 0) return true;
+      return from[from.length - 1] === to[to.length - 1];
+    }
+    function executePour(tubes, fromIdx, toIdx) {
+      if (fromIdx === toIdx) return null;
+      const from = tubes[fromIdx], to = tubes[toIdx];
+      if (!canPour(from, to)) return null;
+      const run = getTopRun(from);
+      const space = TUBE_CAPACITY - to.length;
+      const count = Math.min(run.count, space);
+      const next = cloneTubes(tubes);
+      for(let i=0; i<count; i++) { next[toIdx].push(next[fromIdx].pop()); }
+      return { nextTubes: next, movedCount: count, color: run.color, completedTarget: isTubeComplete(next[toIdx]) };
+    }
+    function findHintMove(tubes) {
+      for(let i=0; i<tubes.length; i++) {
+        if (tubes[i].length === 0 || isTubeComplete(tubes[i])) continue;
+        for(let j=0; j<tubes.length; j++) {
+          if (i === j || tubes[j].length === 0) continue;
+          if (canPour(tubes[i], tubes[j])) return { fromIdx: i, toIdx: j };
+        }
+      }
+      for(let i=0; i<tubes.length; i++) {
+        if (tubes[i].length === 0 || isTubeComplete(tubes[i])) continue;
+        for(let j=0; j<tubes.length; j++) {
+          if (i !== j && tubes[j].length === 0 && canPour(tubes[i], tubes[j])) return { fromIdx: i, toIdx: j };
+        }
+      }
+      return null;
+    }
+    function hasAnyValidMoves(tubes) {
+      for(let i=0; i<tubes.length; i++) {
+        if (tubes[i].length === 0 || isTubeComplete(tubes[i])) continue;
+        for(let j=0; j<tubes.length; j++) {
+          if (i === j) continue;
+          if (canPour(tubes[i], tubes[j])) return true;
+        }
+      }
+      return false;
+    }
+
+    function generateLevel(level) {
+      const numColors = level === 1 ? 3 : level === 2 ? 4 : level <= 4 ? 5 : level <= 7 ? 6 : level <= 11 ? 7 : level <= 16 ? 8 : 9;
+      const emptyTubes = 2;
+      const offset = (level - 1) % COLOR_ORDER.length;
+      const palette = [];
+      for(let i=0; i<numColors; i++) palette.push(COLOR_ORDER[(offset + i) % COLOR_ORDER.length]);
+      const pool = [];
+      palette.forEach(c => { for(let s=0; s<4; s++) pool.push(c); });
+      // Deterministic pseudo-shuffle
+      let seed = level * 7919;
+      const rng = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+      for(let i=pool.length-1; i>0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      const tubes = [];
+      for(let t=0; t<numColors; t++) tubes.push(pool.slice(t*4, (t+1)*4));
+      for(let e=0; e<emptyTubes; e++) tubes.push([]);
+      return { level, numColors, emptyTubes, tubes };
+    }
+
+    // Storage
+    const STORAGE_KEY = 'aquasort_zen_standalone_v1';
+    const DEFAULT_PROGRESS = {
+      level: 1, coins: 75, unlockedTubeStyles: ['classic'], selectedTubeStyle: 'classic',
+      unlockedThemes: ['sage'], selectedTheme: 'sage', isVip: false, testVipMode: false,
+      muted: false, levelsCompletedTotal: 0, lastDailyGiftAt: null
+    };
+    function loadProgress() {
+      try { const r = localStorage.getItem(STORAGE_KEY); return r ? { ...DEFAULT_PROGRESS, ...JSON.parse(r) } : DEFAULT_PROGRESS; } catch { return DEFAULT_PROGRESS; }
+    }
+    function saveProgress(p) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch {} }
+
+    // --- COMPONENTS ---
+    function TubeVisual({ tube, index, style, theme, isSelected, isValidTarget, isHintSource, isHintTarget, isPourSource, pourDir, justLocked, onSelect }) {
+      const locked = isTubeComplete(tube);
+      const clipId = 'clip-' + index + '-' + Math.random().toString(36).substring(2,7);
+
+      let geom = { viewBox: '0 0 80 180', clipPathD: 'M 19 24 L 61 24 L 61 142 A 21 21 0 0 1 19 142 Z', outlineD: 'M 17 22 L 63 22 L 63 142 A 23 23 0 0 1 17 142 Z', rimD: 'M 13 18 Q 40 15 67 18 L 67 24 Q 40 22 13 24 Z', hD: 'M 24 34 L 24 140', liqY: 163, liqH: 130 };
+      if (style === 'potion') {
+        geom = { viewBox: '0 0 80 180', clipPathD: 'M 29 28 L 51 28 L 51 54 C 66 64 72 86 72 114 C 72 148 58 166 40 166 C 22 166 8 148 8 114 C 8 86 14 64 29 54 Z', outlineD: 'M 28 24 L 52 24 L 52 53 C 68 64 74 87 74 114 C 74 150 59 169 40 169 C 21 169 6 150 6 114 C 6 87 12 64 28 53 Z', rimD: 'M 24 20 Q 40 16 56 20 L 56 26 Q 40 23 24 26 Z', hD: 'M 18 76 C 14 92 13 118 18 138', liqY: 164, liqH: 112 };
+      } else if (style === 'goblet') {
+        geom = { viewBox: '0 0 80 180', clipPathD: 'M 13 24 L 67 24 L 64 88 C 62 118 51 132 40 132 C 29 132 18 118 16 88 Z', outlineD: 'M 11 22 L 69 22 L 66 88 C 64 120 52 135 40 135 C 28 135 16 120 14 88 Z', rimD: 'M 9 19 Q 40 16 71 19 L 71 24 Q 40 22 9 24 Z', stemD: 'M 36 135 L 44 135 L 44 161 L 58 166 L 58 171 L 22 171 L 22 166 L 36 161 Z', hD: 'M 20 34 L 22 92', liqY: 132, liqH: 104 };
+      }
+
+      const segH = geom.liqH / TUBE_CAPACITY;
+      let transform = 'translate-y-0';
+      if (isPourSource) transform = pourDir === 'left' ? '-translate-y-6 -rotate-[26deg]' : '-translate-y-6 rotate-[26deg]';
+      else if (isSelected) transform = '-translate-y-3.5';
+      else if (isHintSource || isHintTarget) transform = 'animate-hint-pulse';
+
+      return (
+        <button
+          onClick={() => onSelect(index)}
+          className={`group relative flex flex-col items-center justify-end focus:outline-none rounded-2xl transition-transform duration-200 cursor-pointer select-none w-[62px] h-[138px] sm:w-[68px] sm:h-[150px] ${transform}`}
+        >
+          {(isValidTarget || isHintSource || isHintTarget) && !locked && (
+            <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full" style={{ backgroundColor: isHintSource || isHintTarget ? '#F59E0B' : theme.accentBg }} />
+          )}
+          {justLocked && (
+            <div className="absolute -top-3 inset-x-0 flex justify-center gap-1 z-20 pointer-events-none">
+              <span className="w-4 h-4 animate-sparkle-burst text-amber-400">✨</span>
+            </div>
+          )}
+          <svg viewBox={geom.viewBox} className="w-full h-full overflow-visible drop-shadow-sm">
+            <defs>
+              <clipPath id={clipId}><path d={geom.clipPathD} /></clipPath>
+              {Array.from(new Set(tube)).map(c => (
+                <linearGradient key={c} id={clipId + '-g-' + c} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={LIQUID_COLORS[c].topHex} />
+                  <stop offset="45%" stopColor={LIQUID_COLORS[c].midHex} />
+                  <stop offset="100%" stopColor={LIQUID_COLORS[c].bottomHex} />
+                </linearGradient>
+              ))}
+            </defs>
+            <path d={geom.clipPathD} fill={theme.glassFill} />
+            {geom.stemD && <path d={geom.stemD} fill={theme.glassFill} stroke={theme.glassStroke} strokeWidth="2" />}
+            <g clipPath={'url(#' + clipId + ')'}>
+              {tube.map((c, i) => {
+                const y = geom.liqY - (i + 1) * segH;
+                return (
+                  <rect key={i} x="4" y={y} width="72" height={segH + 1.5} fill={'url(#' + clipId + '-g-' + c + ')'} />
+                );
+              })}
+            </g>
+            <path d={geom.outlineD} fill="none" stroke={isSelected ? theme.accentBg : locked ? theme.lockGlow : theme.glassStroke} strokeWidth={isSelected || locked ? '2.8' : '2.2'} strokeLinejoin="round" />
+            <path d={geom.rimD} fill={theme.glassFill} stroke={isSelected ? theme.accentBg : locked ? theme.lockGlow : theme.glassStroke} strokeWidth="2" strokeLinejoin="round" />
+            <path d={geom.hD} fill="none" stroke={theme.glassHighlight} strokeWidth="2.6" strokeLinecap="round" opacity="0.72" />
+            {locked && (
+              <g>
+                <rect x="25" y="7" width="30" height="10" rx="4" fill={theme.lockGlow} />
+                <path d="M 35 12 L 38.5 15 L 45 9" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </g>
+            )}
+          </svg>
+        </button>
+      );
+    }
+
+    function ConfettiCanvas({ active }) {
+      const ref = useRef(null);
+      useEffect(() => {
+        if (!active) return;
+        const cvs = ref.current; if (!cvs) return;
+        const ctx = cvs.getContext('2d');
+        const w = cvs.clientWidth || 400, h = cvs.clientHeight || 700;
+        cvs.width = w * 2; cvs.height = h * 2; ctx.scale(2, 2);
+        const parts = Array.from({ length: 50 }, () => ({
+          x: w * 0.5 + (Math.random() - 0.5) * 100, y: h * 0.4,
+          vx: (Math.random() - 0.5) * 300, vy: -200 - Math.random() * 250,
+          color: ['#FF8A7A', '#56B8FF', '#FFD166', '#5CE0A8', '#C78BFF'][Math.floor(Math.random()*5)],
+          size: 6 + Math.random() * 6, alpha: 1
+        }));
+        let raf = 0, last = performance.now();
+        const tick = (now) => {
+          const dt = Math.min((now - last) / 1000, 0.05); last = now;
+          ctx.clearRect(0, 0, w, h);
+          parts.forEach(p => {
+            p.vy += 600 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+            if (p.y > h * 0.8) p.alpha -= dt * 2;
+            if (p.alpha > 0) {
+              ctx.save(); ctx.globalAlpha = Math.max(0, p.alpha);
+              ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.size, p.size * 0.7);
+              ctx.restore();
+            }
+          });
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+      }, [active]);
+      if (!active) return null;
+      return <canvas ref={ref} className="pointer-events-none fixed inset-0 w-full h-full z-40" />;
+    }
+
+    // --- MAIN APP ---
+    function App() {
+      const [progress, setProgress] = useState(loadProgress);
+      const [screen, setScreen] = useState('title'); // 'title' | 'playing' | 'gameover'
+      const [level, setLevel] = useState(progress.level);
+      const [tubes, setTubes] = useState(() => generateLevel(progress.level).tubes);
+      const [selectedIdx, setSelectedIdx] = useState(null);
+      const [pourAnim, setPourAnim] = useState(null);
+      const [justLocked, setJustLocked] = useState([]);
+      const [hintPair, setHintPair] = useState(null);
+      const [undos, setUndos] = useState(2);
+      const [moves, setMoves] = useState(0);
+      const [history, setHistory] = useState([]);
+      const [showShop, setShowShop] = useState(false);
+      const [showSettings, setShowSettings] = useState(false);
+      const [showVip, setShowVip] = useState(false);
+      const [showInterstitial, setShowInterstitial] = useState(false);
+
+      const theme = THEMES[progress.selectedTheme] || THEMES.sage;
+      const vipActive = progress.isVip || progress.testVipMode;
+
+      useEffect(() => { saveProgress(progress); soundEngine.setMuted(progress.muted); }, [progress]);
+
+      const startLevel = (lvl) => {
+        setLevel(lvl);
+        setTubes(generateLevel(lvl).tubes);
+        setSelectedIdx(null); setPourAnim(null); setJustLocked([]); setHintPair(null);
+        setUndos(2); setMoves(0); setHistory([]);
+        setScreen('playing');
+      };
+
+      const handleSelect = (idx) => {
+        if (pourAnim) return;
+        const t = tubes[idx];
+        if (selectedIdx === null) {
+          if (t.length === 0 || isTubeComplete(t)) { soundEngine.playGlassClink(0.8); return; }
+          setSelectedIdx(idx); soundEngine.playGlassClink(1);
+          setHintPair(null);
+        } else if (selectedIdx === idx) {
+          setSelectedIdx(null); soundEngine.playGlassClink(0.9);
+        } else {
+          const src = tubes[selectedIdx];
+          if (!canPour(src, t)) {
+            if (t.length > 0 && !isTubeComplete(t)) { setSelectedIdx(idx); soundEngine.playGlassClink(1.1); }
+            else { setSelectedIdx(null); soundEngine.playGlassClink(0.8); }
+            return;
+          }
+          const res = executePour(tubes, selectedIdx, idx);
+          if (!res) { setSelectedIdx(null); return; }
+          const from = selectedIdx, to = idx;
+          setSelectedIdx(null);
+          setPourAnim({ fromIdx: from, toIdx: to, color: res.color });
+          soundEngine.playWaterPour(res.movedCount);
+
+          setTimeout(() => {
+            setHistory(h => [...h, cloneTubes(tubes)]);
+            setTubes(res.nextTubes);
+            setMoves(m => m + 1);
+            setPourAnim(null);
+            if (res.completedTarget) {
+              setJustLocked(j => [...j, to]);
+              soundEngine.playLockChime();
+              setTimeout(() => setJustLocked([]), 900);
+            }
+            if (isLevelWon(res.nextTubes)) {
+              soundEngine.playWinFanfare();
+              setProgress(p => ({ ...p, level: level + 1, coins: p.coins + 35, levelsCompletedTotal: p.levelsCompletedTotal + 1 }));
+              setScreen('gameover');
+            }
+          }, 260);
+        }
+      };
+
+      const handleUndo = () => {
+        if (history.length === 0 || undos <= 0) return;
+        setTubes(history[history.length - 1]);
+        setHistory(h => h.slice(0, -1));
+        setUndos(u => u - 1);
+        setSelectedIdx(null);
+        soundEngine.playGlassClink(0.85);
+      };
+
+      const handleHint = () => {
+        const m = findHintMove(tubes);
+        if (m) { setSelectedIdx(null); setHintPair(m); soundEngine.playGlassClink(1.2); }
+      };
+
+      const handleNextLevel = () => {
+        const nextLvl = level + 1;
+        if (!vipActive && progress.levelsCompletedTotal % 3 === 0) {
+          setShowInterstitial(true);
+        } else {
+          startLevel(nextLvl);
+        }
+      };
+
+      return (
+        <div className="w-full h-[100dvh] flex items-center justify-center md:p-4 overflow-hidden" style={{ backgroundColor: theme.outerBg }}>
+          <div className="relative w-full h-full md:max-w-[430px] md:h-[min(calc(100dvh-32px),844px)] md:rounded-[34px] md:border md:shadow-2xl flex flex-col overflow-hidden" style={{ background: theme.canvasAmbient, borderColor: theme.surfaceBorder }}>
+            
+            {/* --- TITLE SCREEN --- */}
+            {screen === 'title' && (
+              <div className="flex flex-col justify-between h-full p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-mono font-bold text-sm" style={{ color: theme.textPrimary }}>
+                    <span>🪙</span><span>{progress.coins} Coins</span>
+                    {vipActive && <span className="text-amber-500 ml-1">👑 VIP</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setProgress(p => ({...p, muted: !p.muted}))} className="p-2 rounded-xl" style={{ color: theme.textPrimary }}>
+                      {progress.muted ? '🔇' : '🔊'}
+                    </button>
+                    <button onClick={() => setShowSettings(true)} className="p-2 rounded-xl" style={{ color: theme.textPrimary }}>⚙️</button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center justify-center my-auto gap-6 text-center">
+                  <h1 className="font-display text-4xl font-bold tracking-tight" style={{ color: theme.textPrimary }}>AquaSort Zen</h1>
+                  <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: theme.textMuted }}>Harmonize the Flow</p>
+                  
+                  <div className="w-full max-w-[280px] flex flex-col gap-3 mt-4">
+                    <button
+                      onClick={() => startLevel(progress.level)}
+                      className="w-full py-3.5 rounded-2xl text-base font-semibold shadow-lg transition-transform active:scale-98 cursor-pointer"
+                      style={{ backgroundColor: theme.accentBg, color: theme.accentText }}
+                    >
+                      Play Level {progress.level}
+                    </button>
+                    <button
+                      onClick={() => setShowShop(true)}
+                      className="w-full py-2.5 rounded-xl border text-sm font-medium cursor-pointer"
+                      style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder, color: theme.textPrimary }}
+                    >
+                      🎨 Atelier Shop
+                    </button>
+                    <button
+                      onClick={() => setShowVip(true)}
+                      className="w-full py-2.5 rounded-xl border text-sm font-medium cursor-pointer flex items-center justify-center gap-2"
+                      style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder, color: theme.textPrimary }}
+                    >
+                      <span>👑 Remove Ads + VIP</span>
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-center text-xs" style={{ color: theme.textMuted }}>Tap Tube to Lift · Tap Target to Pour</p>
+              </div>
+            )}
+
+            {/* --- PLAYING SCREEN --- */}
+            {screen === 'playing' && (
+              <div className="flex flex-col justify-between h-full p-4">
+                <div className="flex items-center justify-between">
+                  <button onClick={() => setScreen('title')} className="p-2 rounded-xl" style={{ color: theme.textPrimary }}>← Home</button>
+                  <div className="text-center">
+                    <div className="font-display font-bold text-lg" style={{ color: theme.textPrimary }}>Level {level}</div>
+                    <div className="text-xs font-mono" style={{ color: theme.textMuted }}>{moves} moves</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-bold" style={{ color: theme.textPrimary }}>🪙 {progress.coins}</span>
+                    <button onClick={() => setShowShop(true)} className="p-2">🎨</button>
+                    <button onClick={() => setShowSettings(true)} className="p-2">⚙️</button>
+                  </div>
+                </div>
+
+                <div className="flex-1 flex flex-wrap items-center justify-center gap-3 my-auto">
+                  {tubes.map((tube, idx) => (
+                    <TubeVisual
+                      key={idx} tube={tube} index={idx} style={progress.selectedTubeStyle} theme={theme}
+                      isSelected={selectedIdx === idx}
+                      isValidTarget={selectedIdx !== null && selectedIdx !== idx && canPour(tubes[selectedIdx], tube)}
+                      isHintSource={hintPair?.fromIdx === idx} isHintTarget={hintPair?.toIdx === idx}
+                      isPourSource={pourAnim?.fromIdx === idx} pourDir="right"
+                      justLocked={justLocked.includes(idx)} onSelect={handleSelect}
+                    />
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 p-2 rounded-2xl border" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder }}>
+                  <button onClick={handleUndo} disabled={undos <= 0 || history.length === 0} className="py-2 rounded-xl text-xs font-semibold flex flex-col items-center disabled:opacity-40" style={{ color: theme.textPrimary }}>
+                    <span>↩️</span><span>Undo ({undos})</span>
+                  </button>
+                  <button onClick={() => { setTubes(generateLevel(level).tubes); setSelectedIdx(null); }} className="py-2 rounded-xl text-xs font-semibold flex flex-col items-center" style={{ color: theme.textPrimary }}>
+                    <span>🔄</span><span>Restart</span>
+                  </button>
+                  <button onClick={handleHint} className="py-2 rounded-xl text-xs font-semibold flex flex-col items-center" style={{ color: theme.textPrimary }}>
+                    <span>💡</span><span>Hint</span>
+                  </button>
+                  <button onClick={() => setTubes(t => [...t, []])} className="py-2 rounded-xl text-xs font-semibold flex flex-col items-center" style={{ color: theme.textPrimary }}>
+                    <span>🧪</span><span>+1 Tube</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* --- GAME OVER / VICTORY SCREEN --- */}
+            {screen === 'gameover' && (
+              <div className="flex flex-col items-center justify-center h-full p-6 text-center gap-5">
+                <ConfettiCanvas active={true} />
+                <div className="w-16 h-16 rounded-3xl flex items-center justify-center text-3xl shadow-lg" style={{ backgroundColor: theme.accentBg, color: theme.accentText }}>🏆</div>
+                <div>
+                  <h2 className="font-display text-3xl font-bold">Level {level} Cleared!</h2>
+                  <p className="text-sm mt-1" style={{ color: theme.textMuted }}>All vessels harmonized smoothly.</p>
+                </div>
+                <div className="w-full max-w-[280px] flex flex-col gap-3">
+                  <button onClick={handleNextLevel} className="w-full py-3.5 rounded-2xl text-base font-semibold shadow-md cursor-pointer" style={{ backgroundColor: theme.accentBg, color: theme.accentText }}>
+                    Next Level ({level + 1})
+                  </button>
+                  <button onClick={() => setScreen('title')} className="w-full py-2.5 rounded-xl border text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder, color: theme.textPrimary }}>
+                    Home Menu
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* --- 50px BOTTOM BANNER AD BAR --- */}
+            {!vipActive && (
+              <aside className="w-full h-[50px] shrink-0 border-t px-3 flex items-center justify-between gap-2" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder, color: theme.textMuted }}>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 border rounded">AdMob Banner</span>
+                <span className="text-xs truncate">ca-app-pub-3940256099942544/6300978111</span>
+                <button onClick={() => setShowVip(true)} className="px-2.5 py-1 rounded-lg text-xs font-semibold shrink-0 cursor-pointer" style={{ backgroundColor: theme.accentBg, color: theme.accentText }}>Remove Ads</button>
+              </aside>
+            )}
+
+          </div>
+
+          {/* --- SHOP MODAL --- */}
+          {showShop && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+              <div className="w-full max-w-[380px] rounded-3xl p-5 border flex flex-col gap-4 shadow-2xl" style={{ backgroundColor: theme.canvasAmbient, borderColor: theme.surfaceBorder, color: theme.textPrimary }}>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-xl font-bold">Atelier Shop (🪙 {progress.coins})</h2>
+                  <button onClick={() => setShowShop(false)} className="text-lg">✕</button>
+                </div>
+                <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                  {TUBE_STYLES.map(s => (
+                    <div key={s.id} className="p-3 rounded-2xl border flex items-center justify-between" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder }}>
+                      <div>
+                        <div className="text-sm font-semibold">{s.name}</div>
+                        <div className="text-xs" style={{ color: theme.textMuted }}>{s.subtitle}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (progress.unlockedTubeStyles.includes(s.id) || progress.coins >= s.price) {
+                            setProgress(p => ({ ...p, coins: progress.unlockedTubeStyles.includes(s.id) ? p.coins : p.coins - s.price, unlockedTubeStyles: [...new Set([...p.unlockedTubeStyles, s.id])], selectedTubeStyle: s.id }));
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer"
+                        style={{ backgroundColor: progress.selectedTubeStyle === s.id ? theme.surfaceBorder : theme.accentBg, color: progress.selectedTubeStyle === s.id ? theme.textPrimary : theme.accentText }}
+                      >
+                        {progress.selectedTubeStyle === s.id ? 'Equipped' : progress.unlockedTubeStyles.includes(s.id) ? 'Equip' : `${s.price} Coins`}
+                      </button>
+                    </div>
+                  ))}
+                  {THEME_LIST.map(th => (
+                    <div key={th.id} className="p-3 rounded-2xl border flex items-center justify-between" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder }}>
+                      <div>
+                        <div className="text-sm font-semibold">{th.name}</div>
+                        <div className="text-xs" style={{ color: theme.textMuted }}>{th.subtitle}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (progress.unlockedThemes.includes(th.id) || progress.coins >= th.price) {
+                            setProgress(p => ({ ...p, coins: progress.unlockedThemes.includes(th.id) ? p.coins : p.coins - th.price, unlockedThemes: [...new Set([...p.unlockedThemes, th.id])], selectedTheme: th.id }));
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer"
+                        style={{ backgroundColor: progress.selectedTheme === th.id ? theme.surfaceBorder : theme.accentBg, color: progress.selectedTheme === th.id ? theme.textPrimary : theme.accentText }}
+                      >
+                        {progress.selectedTheme === th.id ? 'Active' : progress.unlockedThemes.includes(th.id) ? 'Apply' : `${th.price} Coins`}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- VIP MODAL --- */}
+          {showVip && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+              <div className="w-full max-w-[360px] rounded-3xl p-5 border flex flex-col gap-4 shadow-2xl" style={{ backgroundColor: theme.canvasAmbient, borderColor: theme.surfaceBorder, color: theme.textPrimary }}>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-xl font-bold">Remove Ads + VIP</h2>
+                  <button onClick={() => setShowVip(false)}>✕</button>
+                </div>
+                <p className="text-xs" style={{ color: theme.textMuted }}>AdMob test units active. Upgrade to remove all ads forever.</p>
+                <button onClick={() => { setProgress(p => ({ ...p, isVip: true })); setShowVip(false); }} className="w-full py-3 rounded-xl font-semibold cursor-pointer" style={{ backgroundColor: theme.accentBg, color: theme.accentText }}>
+                  Unlock VIP ($2.99 / ₹199)
+                </button>
+                <button onClick={() => { setProgress(p => ({ ...p, testVipMode: !p.testVipMode })); }} className="w-full py-2 rounded-xl border text-xs font-semibold cursor-pointer" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder, color: theme.textPrimary }}>
+                  Test Mode (Simulate VIP): {progress.testVipMode ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* --- SETTINGS MODAL --- */}
+          {showSettings && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+              <div className="w-full max-w-[340px] rounded-3xl p-5 border flex flex-col gap-3 shadow-2xl" style={{ backgroundColor: theme.canvasAmbient, borderColor: theme.surfaceBorder, color: theme.textPrimary }}>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-lg font-bold">Settings</h2>
+                  <button onClick={() => setShowSettings(false)}>✕</button>
+                </div>
+                <button onClick={() => setProgress(p => ({ ...p, muted: !p.muted }))} className="w-full py-3 px-4 rounded-xl border flex items-center justify-between text-sm" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder }}>
+                  <span>Sound Effects</span>
+                  <span className="font-mono font-bold">{progress.muted ? 'MUTED' : 'ON'}</span>
+                </button>
+                <button onClick={() => { localStorage.removeItem(STORAGE_KEY); window.location.reload(); }} className="w-full py-3 px-4 rounded-xl border text-sm text-red-500 font-semibold" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder }}>
+                  Reset Progress
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* --- INTERSTITIAL AD MODAL --- */}
+          {showInterstitial && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
+              <div className="w-full max-w-[360px] rounded-3xl p-5 border flex flex-col gap-4 shadow-2xl text-center" style={{ backgroundColor: theme.canvasAmbient, borderColor: theme.surfaceBorder, color: theme.textPrimary }}>
+                <div className="text-xs font-mono" style={{ color: theme.textMuted }}>AdMob Interstitial Test Slot</div>
+                <h3 className="font-display text-xl font-bold">Tranquil Ambient Interstitial</h3>
+                <code className="text-xs font-mono p-2 rounded border select-all" style={{ backgroundColor: theme.surfaceBg, borderColor: theme.surfaceBorder }}>
+                  {ADMOB_CONFIG.interstitialId}
+                </code>
+                <button onClick={() => { setShowInterstitial(false); startLevel(level + 1); }} className="w-full py-3 rounded-2xl font-semibold cursor-pointer" style={{ backgroundColor: theme.accentBg, color: theme.accentText }}>
+                  Continue to Next Level
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>

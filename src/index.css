@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    overscroll-behavior: none;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes floatSlow {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes sparkleBurst {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(0deg);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.15) rotate(12deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.45) rotate(28deg) translateY(-10px);
+  }
+}
+
+@keyframes pourStreamFlow {
+  0% {
+    stroke-dashoffset: 36;
+    opacity: 0.95;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes hintPulse {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.03);
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 4.2s ease-in-out infinite;
+}
+
+.animate-sparkle-burst {
+  animation: sparkleBurst 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pour-stream {
+  stroke-dasharray: 12 6;
+  animation: pourStreamFlow 0.28s linear infinite;
+}
+
+.animate-hint-pulse {
+  animation: hintPulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-slow,
+  .animate-sparkle-burst,
+  .animate-pour-stream,
+  .animate-hint-pulse {
+    animation: none !important;
+  }
+}

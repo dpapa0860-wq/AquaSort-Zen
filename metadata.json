@@ -1,0 +1,8 @@
+{
+  "name": "AquaSort Zen",
+  "description": "A calming, mobile-first water color sorting puzzle game with infinite solvable levels, synthesized Web Audio effects, cosmetic tube & theme unlocks, and simulated reward loops.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
